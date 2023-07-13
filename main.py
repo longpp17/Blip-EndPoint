@@ -8,14 +8,17 @@ from transformers import pipeline
 
 app = FastAPI()
 
+
 class ImageType(BaseModel):
     data: List[str] = []
+
 
 # Load image captioning model on startup
 @app.on_event('startup')
 async def load_model():
     global captioner
     captioner = pipeline("image-to-text", model="Salesforce/blip2-opt-2.7b-coco")
+
 
 @app.post('/predict')
 async def predict(images: ImageType):
