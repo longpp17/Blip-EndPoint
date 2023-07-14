@@ -1,3 +1,5 @@
+import binascii
+
 from fastapi import FastAPI, HTTPException
 from typing import List
 from pydantic import BaseModel
@@ -14,8 +16,7 @@ class ImageType(BaseModel):
 # Load image captioning model on startup
 @app.on_event('startup')
 async def load_model():
-    global captioner
-    captioner = pipeline("image-to-text", model="Salesforce/blip2-opt-2.7b-coco")
+    app.state.captioner = pipeline("image-to-text", model="Salesforce/blip2-opt-2.7b-coco")
 
 # Generate API Token Randomly on startup and print that to console
 @app.post('/predict')
@@ -24,13 +25,18 @@ async def predict(images: ImageType):
         captions = []
         for image_data in images.data:
             # convert base64 string back into bytes
-            image_bytes = base64.b64decode(image_data)
+            try:
+                image_bytes = base64.b64decode(image_data)
+            except binascii.Error:
+                raise HTTPException(status_code=400, detail="Invalid base64 string")
 
             # open the image
-            image = Image.open(io.BytesIO(image_bytes))
-
+            try:
+                image = Image.open(io.BytesIO(image_bytes))
+            except OSError:
+                raise HTTPException(status_code=400, detail="Invalid image")
             # use the model to predict
-            result = captioner(image)[0]
+            result = app.state.captioner(image)[0]
 
             # append the caption to the list of captions
             captions.append(result['generated_text'])
@@ -40,20 +46,18 @@ async def predict(images: ImageType):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 # switching models
 @app.post('/switch')
 async def switch_model(model_name: str):
-    global captioner
-    captioner = pipeline("image-to-text", model=model_name)
+    try:
+        app.state.captioner = pipeline("image-to-text", model=model_name)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     return {'model': model_name}
 
 # get current model name
 @app.get('/model')
 async def get_model():
-    return {'model': captioner.model.name_or_path}
+    return {'model': app.state.captioner.model.name_or_path}
 
-# get nohup.out
-@app.get('/log')
-async def get_log():
-    with open('nohup.out', 'r') as f:
-        return {'log': f.read()}
