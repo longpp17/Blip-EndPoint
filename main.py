@@ -51,3 +51,9 @@ async def switch_model(model_name: str):
 @app.get('/model')
 async def get_model():
     return {'model': captioner.model.name_or_path}
+
+# get nohup.out
+@app.get('/log')
+async def get_log():
+    with open('nohup.out', 'r') as f:
+        return {'log': f.read()}
